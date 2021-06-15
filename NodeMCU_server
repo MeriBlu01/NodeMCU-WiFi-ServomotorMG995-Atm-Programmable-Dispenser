@@ -1,0 +1,236 @@
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>                                //ESP Web Server Library to host a web page
+
+#include <ESP8266mDNS.h>
+#include <NTPClient.h>                                       //It is a time library that performs an elegant synchronization with the NTP server.
+#include <WiFiUdp.h>                                         //Library that handles the UDP protocol. Open a UDP port, send and receive UDP packets, etc.
+#include <Servo.h>
+
+ESP8266WebServer server(80);
+
+const char* ssid="nameWiFi";                //Name of your WiFi Network.
+const char* password="**********";          //Password of your WiFi Network.
+  
+  //Static IP address configuration
+  IPAddress staticIP(192, 168, 1, 74);                              //ESP static ip
+  IPAddress gateway(NNN, NNN, N, NN);                               //IP Address of your WiFi Router (Gateway) _64
+  IPAddress subnet(255, 255, 255, 0);                               //Subnet mask
+  IPAddress dns(NNN, NNN, N, NNN);                                  //DNS
+
+const long utcOffsetInSeconds = -21600;                             //UTC*60*60....UTC of your respective Time Zone
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
+// The NTP Client is defined to take the time
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
+
+Servo servo;
+String supply, deleteAll;
+String alarmView;
+  int noAlarm=0;
+  int aHrs, aMins, bHrs, bMins, cHrs, cMins;
+  int dispA, dispB, dispC;
+  int xDay, xH, xM;
+  int InitA, InitB, InitC, e;
+  String alarmH, alarmM, alarmD, erase;
+  String grsQ;
+  char DaysA[8];
+  char DaysB[8];
+  char DaysC[8];
+  char FlagA, FlagB, FlagC;
+  String blank="0000000";
+  String week="MTWTFSS";
+
+void Disp()
+{
+  Serial.println("***"); delay(3000);
+  servo.write(90);
+  delay(1000);
+  servo.write(50);
+  Serial.println("Dispensing food...");
+  delay(1000);
+  servo.write(90);
+  Serial.println("... Food served.");
+  delay(1000);
+}
+
+void getPrize() 
+{
+  server.send(200, "text/html", supply);
+  servo.write(90);
+  delay(1000);
+  servo.write(50);
+  delay(1000);
+  servo.write(90);
+  delay(1000);
+}
+void delAlarm() 
+{
+   server.send(200, "text/plain", deleteAll);
+   noAlarm = 0; 
+   e=0;         
+                 aHrs = 0;
+                 aMins = 0;
+                 (blank).toCharArray(DaysA,8);
+                 dispA = 0;
+          
+                 bHrs = 0;
+                 bMins = 0;
+                 (blank).toCharArray(DaysB,8);
+                 dispB = 0;
+          
+                 cHrs = 0;
+                 cMins = 0;
+                 (blank).toCharArray(DaysC,8);
+                 dispC = 0;      
+}
+void getAlarm() 
+{
+   // return replay
+   server.send(200, "text/plain", String("GET ") + server.arg(String("Hrs")) + server.arg(String("Min")) + server.arg(String("D")) + server.arg(String("Q")));
+   
+   // Alarm Variables Received
+   alarmH=server.arg(String("Hrs"));
+   alarmM=server.arg(String("Min"));
+   
+   alarmD=server.arg(String("D"));
+   grsQ=server.arg(String("Q"));
+   Serial.println("***");
+   Serial.println(alarmH);
+   Serial.println(alarmM);
+   Serial.println(week);
+   Serial.println(alarmD);
+   Serial.println(grsQ);
+
+   noAlarm = noAlarm + 1;                            //Control de número de alarma
+   Serial.println("***"); 
+   Serial.println(noAlarm);
+   if (noAlarm==4){
+         Serial.println("***"); 
+         Serial.println("Unable to store new schedule. Full capacity.");  delay(3000); 
+   }
+   if (noAlarm<4){
+         switch(noAlarm){
+          case 1: 
+                 aHrs = String(alarmH).toInt();
+                 aMins = String(alarmM).toInt();
+                 (alarmD).toCharArray(DaysA,8);
+                 dispA = String(grsQ).toInt();
+          case 2: 
+                 bHrs = String(alarmH).toInt();
+                 bMins = String(alarmM).toInt();
+                 (alarmD).toCharArray(DaysB,8);
+                 dispB = String(grsQ).toInt();
+          case 3:
+                 cHrs = String(alarmH).toInt();
+                 cMins = String(alarmM).toInt();
+                 (alarmD).toCharArray(DaysC,8);
+                 dispC = String(grsQ).toInt();
+         }
+   }
+}
+void setup() {
+  Serial.begin(115200);                                             //Inicializa y configura el´puerto serial
+  delay(10);
+                                       
+  WiFi.disconnect();
+  WiFi.mode(WIFI_STA);                                             //Modo Estación   
+  WiFi.config(staticIP, subnet, gateway, dns);                                             
+  WiFi.begin(ssid, password);
+
+  // Waiting to connect
+  while (WiFi.status() != WL_CONNECTED) 
+  delay(500);
+
+  Serial.println(WiFi.localIP());
+  // Routes are defined
+  server.on("/premio", HTTP_GET, getPrize);
+  server.on("/nvalarm", HTTP_GET, getAlarm);
+  server.on("/delAlarm", HTTP_GET, delAlarm);
+   
+  server.begin();
+  
+  timeClient.begin();             //Inicializa la captura de datos del servidor NTP
+  servo.attach(5);                //D1
+  servo.write(0);
+  
+  pinMode(12, OUTPUT);            //D6
+  pinMode(13, OUTPUT);            //D7
+  digitalWrite(12, LOW);          //Access
+  digitalWrite(13, LOW);          //Closure
+}
+
+ void loop()
+{
+  server.send (200, "text/plain","Aloha NodeMCU");
+  timeClient.update();
+  
+  xDay=timeClient.getDay();                      //Returns an integer value corresponding to the day of the week (0 to 6). Starting on Sunday.
+  if(xDay!=0){
+    FlagA=DaysA[xDay-1];
+    FlagB=DaysB[xDay-1];
+    FlagC=DaysC[xDay-1];
+  }else{
+  FlagA=DaysA[xDay+6];
+  FlagB=DaysB[xDay+6];
+  FlagC=DaysC[xDay+6];
+  }
+   if (FlagA=='1' || FlagB == '1' || FlagC == '1'){
+              xH = timeClient.getHours();         //returns an INT number with the current hour (0 to 23) in 24 hour format;
+              xM = timeClient.getMinutes();       //returns an INT number with the current hour (0 to 59). 
+              
+              if(xH==aHrs && xM==aMins && FlagA=='1'){
+                InitA = InitA+1; delay(1500);
+              }else {InitA = 0;}
+              
+              if(xH==bHrs && xM==bMins && FlagB=='1'){
+                InitB = InitB+1; delay(1500);
+              }else {InitB = 0;}
+
+              if(xH==cHrs && xM==cMins && FlagC=='1'){
+                InitC = InitC+1; delay(1500);
+              }else {InitC = 0;}
+              
+              server.handleClient();
+    }
+    else{
+      if(e<5){
+    Serial.println("***"); 
+    Serial.println("No alarm registered today."); 
+    e=e+1;}
+  }  
+       
+  if(InitA==1){
+    Disp();
+    delay(500);
+    Serial.println("Alarm 1...");  
+  }
+  
+  
+  else if(InitB==1){
+    Disp();
+    delay(500);
+    Serial.println("Alarm 2..."); 
+  }
+ 
+  else if(InitC==1){
+    Disp();  
+    delay(500);
+    Serial.println("Alarm 3...");   
+  }
+
+  if (noAlarm<2){
+         digitalWrite(13, LOW); delay(1000);
+         digitalWrite(12, HIGH); 
+  }
+  
+  else if (noAlarm==3){
+        digitalWrite(12, LOW); delay(1000);
+        digitalWrite(13, HIGH);
+  }
+  
+  server.handleClient();
+  
+}
+  
